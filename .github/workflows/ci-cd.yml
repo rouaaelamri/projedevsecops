@@ -59,6 +59,7 @@ jobs:
       - name: Build Docker image
         run: docker build -t $DOCKER_IMAGE_NAME:latest -t $DOCKER_IMAGE_NAME:${{ github.sha }} .
 
+        
       # 9. Test Docker image
       - name: Test Docker image
         run: |
