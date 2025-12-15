@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline DevSecOps
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
 
       # 3. Upload rapport Gitleaks
       - name: Upload Gitleaks report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
@@ -48,7 +48,7 @@ jobs:
       - name: Run tests
         run: mvn test
 
-      # 7. Login Docker Hube
+      # 7. Login Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
@@ -59,17 +59,17 @@ jobs:
       - name: Build Docker image
         run: docker build -t $DOCKER_IMAGE_NAME:latest -t $DOCKER_IMAGE_NAME:${{ github.sha }} .
 
-
       # 9. Test Docker image
-      - name: Test Docker image
+      - name: Test Docker image locally
         run: |
           docker run -d --name todo-api-test -p 8080:8080 $DOCKER_IMAGE_NAME:latest
-          sleep 15
+          sleep 20
           curl -f http://localhost:8080/api/todos/health || exit 1
+          curl -f http://localhost:8080/actuator/health || exit 1
           docker stop todo-api-test
           docker rm todo-api-test
 
-      # 10. Scan Trivy
+      # 10. Scan Trivy (vulnérabilités)
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -77,7 +77,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          exit-code: '1'
 
       # 11. Upload rapport Trivy
       - name: Upload Trivy report
@@ -87,14 +87,25 @@ jobs:
           name: trivy-report
           path: trivy-results.sarif
 
-      # 12. Push sur Docker Hub
-      - name: Push Docker image
+      # 12. Scan Trivy en format table pour affichage
+      - name: Run Trivy scanner (table format)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE_NAME }}:latest
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+
+      # 13. Push sur Docker Hub
+      - name: Push Docker image to Docker Hub
         if: success()
         run: |
           docker push $DOCKER_IMAGE_NAME:latest
           docker push $DOCKER_IMAGE_NAME:${{ github.sha }}
 
-      # 13. Notification de succès
-      - name: Build Success
+      # 14. Notification de succès
+      - name: Build Success Notification
         if: success()
-        run: echo "✅ Pipeline completed successfully!"
+        run: |
+          echo "✅ Pipeline completed successfully!"
+          echo "🐳 Image pushed: $DOCKER_IMAGE_NAME:latest"
+          echo "🏷️  SHA tag: $DOCKER_IMAGE_NAME:${{ github.sha }}"
